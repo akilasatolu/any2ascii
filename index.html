@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASCIIアート変換</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* layout idea: preview stage on the left, one narrow control column on the right; stacked on phones */
+:root {
+  --bg: #f1f3f8;
+  --panel: #ffffff;
+  --ink: #141926;
+  --muted: #5a6479;
+  --line: #d8dde9;
+  --accent: #2a58e8;
+  --accent-ink: #ffffff;
+  --soft: #e8edfb;
+  --font-display: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-body: "Noto Sans JP", system-ui, -apple-system, "Hiragino Sans", "Yu Gothic", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11141c; --panel: #1a1f2b; --ink: #e8ecf6; --muted: #98a2b8;
+    --line: #2b3243; --accent: #7b9bff; --accent-ink: #0b1022; --soft: #232b40;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11141c; --panel: #1a1f2b; --ink: #e8ecf6; --muted: #98a2b8;
+  --line: #2b3243; --accent: #7b9bff; --accent-ink: #0b1022; --soft: #232b40;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 400 15px/1.6 var(--font-body);
+  -webkit-text-size-adjust: 100%;
+}
+.top { max-width: 1120px; margin: 0 auto; padding: 20px 16px 0; }
+.top h1 { margin: 0; font: 600 22px/1.3 var(--font-display); letter-spacing: 0.02em; text-wrap: balance; }
+.top p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+.app {
+  max-width: 1120px; margin: 0 auto; padding: 16px;
+  display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 900px) {
+  .app { grid-template-columns: minmax(0, 1fr) 340px; align-items: start; }
+  .controls { position: sticky; top: 16px; }
+}
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+.stage { padding: 12px; display: grid; gap: 10px; }
+.view {
+  display: grid; place-items: center; border-radius: 8px; overflow: hidden;
+  background: var(--soft); min-height: 160px;
+}
+#out { display: block; max-width: 100%; max-height: 72vh; width: auto; height: auto; }
+.view.checker {
+  background-color: #8c92a0;
+  background-image: linear-gradient(45deg, #757b89 25%, transparent 25%, transparent 75%, #757b89 75%), linear-gradient(45deg, #757b89 25%, transparent 25%, transparent 75%, #757b89 75%);
+  background-size: 16px 16px; background-position: 0 0, 8px 8px;
+}
+.statusbar { display: flex; gap: 12px; align-items: center; justify-content: space-between; min-height: 36px; }
+#info { color: var(--muted); font: 500 13px/1.4 var(--font-display); font-variant-numeric: tabular-nums; }
+.controls { padding: 16px; display: grid; gap: 16px; }
+.field { display: grid; gap: 6px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.field > legend, .field > label.lab { font-weight: 700; font-size: 13px; padding: 0; color: var(--muted); }
+.row { display: flex; gap: 10px; align-items: center; }
+.row output { font: 500 13px/1 var(--font-display); min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { text-align: center; padding: 8px 6px; cursor: pointer; font-weight: 500; font-size: 14px; border-right: 1px solid var(--line); }
+.seg label:last-of-type { border-right: 0; }
+.seg input:checked + label { background: var(--accent); color: var(--accent-ink); }
+.seg input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: -2px; }
+select, input[type="text"] {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel); color: var(--ink); font: 400 14px var(--font-body);
+}
+input[type="text"] { font-family: var(--font-display); }
+input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; min-height: 28px; }
+.hint { color: var(--muted); font-size: 12px; margin: 0; }
+.check { display: flex; gap: 8px; align-items: center; font-weight: 500; cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 14px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--ink); font: 500 14px/1.2 var(--font-body);
+  cursor: pointer; min-height: 42px; text-align: center;
+}
+.btn:hover:not(:disabled) { border-color: var(--accent); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.small { min-height: 32px; padding: 6px 12px; font-size: 13px; }
+.btn:focus-visible, select:focus-visible, input:focus-visible, input[type="range"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.drop { display: grid; gap: 6px; padding: 14px; border: 2px dashed var(--line); border-radius: 10px; text-align: center; }
+.drop.over { border-color: var(--accent); background: var(--soft); }
+.drop input[type="file"] { display: none; }
+.drop span { color: var(--muted); font-size: 12px; }
+.savegrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.savegrid .wide { grid-column: 1 / -1; }
+#prog { width: 100%; height: 8px; accent-color: var(--accent); }
+.anim[hidden], [hidden] { display: none !important; }
+.divider { height: 1px; background: var(--line); border: 0; margin: 0; }
+#msg { min-height: 20px; color: var(--muted); font-size: 13px; margin: 0; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>ASCIIアート変換</h1>
+  <p>画像・動画・GIFを文字に変換して、背景を透明にしたPNG・GIFも作れます。ブラウザ上で変換するので、安全です。</p>
+</header>
+
+<main class="app">
+  <section class="stage panel" aria-label="プレビュー">
+    <div class="view" id="view"><canvas id="out" role="img" aria-label="変換結果のプレビュー"></canvas></div>
+    <div class="statusbar">
+      <span id="info">読み込み中…</span>
+      <button class="btn small" id="play" type="button" hidden>一時停止</button>
+    </div>
+  </section>
+
+  <section class="controls panel" aria-label="設定">
+    <div class="drop" id="drop">
+      <label class="btn primary" for="file">画像・動画・GIFを選ぶ</label>
+      <input type="file" id="file" accept="image/*,video/*">
+      <span id="srcname">表示中: サンプル画像（ここにドロップもできます）</span>
+    </div>
+
+    <fieldset class="field">
+      <legend>色</legend>
+      <div class="seg">
+        <input type="radio" name="mode" id="mode-mono" value="mono" checked><label for="mode-mono">白黒</label>
+        <input type="radio" name="mode" id="mode-color" value="color"><label for="mode-color">カラー</label>
+      </div>
+    </fieldset>
+
+    <fieldset class="field">
+      <legend>背景</legend>
+      <div class="seg">
+        <input type="radio" name="bg" id="bg-black" value="black" checked><label for="bg-black">黒</label>
+        <input type="radio" name="bg" id="bg-white" value="white"><label for="bg-white">白</label>
+        <input type="radio" name="bg" id="bg-clear" value="transparent"><label for="bg-clear">透過</label>
+      </div>
+    </fieldset>
+
+    <fieldset class="field" id="tone-field" hidden>
+      <legend>透過のときの文字</legend>
+      <div class="seg">
+        <input type="radio" name="tone" id="tone-white" value="white" checked><label for="tone-white">白い文字</label>
+        <input type="radio" name="tone" id="tone-black" value="black"><label for="tone-black">黒い文字</label>
+      </div>
+      <p class="hint">白黒では文字の色、カラーでは濃淡の付け方が変わります。</p>
+    </fieldset>
+
+    <div class="field">
+      <label class="lab" for="cols">サイズ（横の文字数）</label>
+      <div class="row"><input type="range" id="cols" min="20" max="240" step="1" value="100"><output id="cols-o" for="cols">100</output></div>
+    </div>
+
+    <div class="field">
+      <label class="lab" for="charset">文字の種類</label>
+      <select id="charset">
+        <option value="standard">標準（10段階）</option>
+        <option value="detailed">細かい（70段階）</option>
+        <option value="blocks">ブロック</option>
+        <option value="binary">2値</option>
+        <option value="custom">自分で指定</option>
+      </select>
+      <div id="custom-wrap" hidden>
+        <input type="text" id="custom" value=" .:-=+*#%@" aria-label="使う文字（薄い順）" spellcheck="false" autocomplete="off">
+        <p class="hint">薄い文字から濃い文字の順に並べます。</p>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="lab" for="contrast">コントラスト</label>
+      <div class="row"><input type="range" id="contrast" min="0.5" max="2.5" step="0.05" value="1"><output id="contrast-o" for="contrast">1.00</output></div>
+    </div>
+    <div class="field">
+      <label class="lab" for="bright">明るさ</label>
+      <div class="row"><input type="range" id="bright" min="-50" max="50" step="1" value="0"><output id="bright-o" for="bright">0</output></div>
+    </div>
+    <label class="check" for="invert"><input type="checkbox" id="invert"> 明暗を反転する</label>
+
+    <hr class="divider">
+
+    <div class="field">
+      <label class="lab" for="scale">保存する画像の大きさ</label>
+      <select id="scale">
+        <option value="1">標準（1倍）</option>
+        <option value="2" selected>大きめ（2倍）</option>
+        <option value="3">特大（3倍）</option>
+      </select>
+    </div>
+
+    <div class="anim" id="animopts" hidden>
+      <div class="field">
+        <label class="lab" for="fps">動画のGIF化: コマ数</label>
+        <select id="fps">
+          <option value="5">1秒あたり5コマ</option>
+          <option value="10" selected>1秒あたり10コマ</option>
+          <option value="15">1秒あたり15コマ</option>
+        </select>
+      </div>
+      <div class="field" style="margin-top:12px">
+        <label class="lab" for="maxsec">GIFにする長さ（最大）</label>
+        <select id="maxsec">
+          <option value="3">3秒</option>
+          <option value="5" selected>5秒</option>
+          <option value="10">10秒</option>
+          <option value="20">20秒</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field">
+      <span class="lab" style="font-weight:700;font-size:13px;color:var(--muted)">ダウンロード</span>
+      <div class="savegrid">
+        <button class="btn primary" id="save-png" type="button" disabled>画像 (PNG)</button>
+        <button class="btn" id="save-txt" type="button" disabled>テキスト (.txt)</button>
+        <button class="btn" id="save-html" type="button" disabled>HTML</button>
+        <button class="btn" id="copy" type="button">コピー</button>
+        <button class="btn primary wide anim" id="save-gif" type="button" hidden disabled>アニメGIFを作って保存</button>
+      </div>
+      <progress id="prog" max="1" value="0" hidden></progress>
+      <button class="btn small" id="cancel" type="button" hidden>中止</button>
+      <p id="msg" role="status" aria-live="polite"></p>
+    </div>
+  </section>
+</main>
+<div id="stash" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden" aria-hidden="true"></div>
+
+<script>
+"use strict";
+(function () {
+  var CW = 6, CH = 12;               // one character cell at 1x, in pixels
+  var FONT = '"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace';
+  var RAMPS = {
+    standard: " .:-=+*#%@",
+    detailed: " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$",
+    blocks: " ░▒▓█",
+    binary: " #"
+  };
+  var $ = function (id) { return document.getElementById(id); };
+  var out = $("out"), work = document.createElement("canvas");
+  var wctx = work.getContext("2d", { willReadFrequently: true });
+
+  var state = { mode: "mono", bg: "black", tone: "white", cols: 100, charset: "standard", custom: "", contrast: 1, bright: 0, invert: false };
+  var src = null, dirty = true, exporting = false, cancelFlag = false;
+  var lastRes = null, dl = null, dlChecked = false;
+  var standalone = !(window.claude && window.claude.use);
+  var objectUrl = null, gifPos = 0, gifPlaying = true, gifShown = -1, lastNow = 0, lastVideoDraw = 0;
+
+  /* ---------- state & controls ---------- */
+  function readState() {
+    state.mode = document.querySelector('input[name="mode"]:checked').value;
+    state.bg = document.querySelector('input[name="bg"]:checked').value;
+    state.tone = document.querySelector('input[name="tone"]:checked').value;
+    $("tone-field").hidden = state.bg !== "transparent";
+    state.cols = +$("cols").value;
+    state.charset = $("charset").value;
+    state.custom = $("custom").value;
+    state.contrast = +$("contrast").value;
+    state.bright = +$("bright").value;
+    state.invert = $("invert").checked;
+    $("cols-o").textContent = state.cols;
+    $("contrast-o").textContent = state.contrast.toFixed(2);
+    $("bright-o").textContent = state.bright;
+    $("custom-wrap").hidden = state.charset !== "custom";
+    dirty = true;
+  }
+  function getRamp() {
+    var s = state.charset === "custom" ? state.custom : RAMPS[state.charset];
+    var a = Array.from(s || "");
+    return a.length >= 2 ? a : Array.from(RAMPS.standard);
+  }
+  function say(t) { $("msg").textContent = t || ""; }
+
+  /* ---------- conversion ---------- */
+  function convert(el, sw, sh) {
+    var cols = Math.max(10, Math.min(state.cols, Math.floor(300 * 2 * sw / sh)));
+    var rows = Math.max(1, Math.round(cols * sh / sw * CW / CH));
+    work.width = cols; work.height = rows;
+    var white = state.bg === "white" || (state.bg === "transparent" && state.tone === "black");
+    wctx.fillStyle = white ? "#fff" : "#000";
+    wctx.fillRect(0, 0, cols, rows);
+    wctx.imageSmoothingEnabled = true;
+    wctx.imageSmoothingQuality = "high";
+    wctx.drawImage(el, 0, 0, cols, rows);
+    var d = wctx.getImageData(0, 0, cols, rows).data;
+    var ramp = getRamp(), n = ramp.length;
+    var k = state.contrast, b = state.bright / 100, inv = state.invert;
+    var rgb = new Uint8ClampedArray(cols * rows * 3), lines = new Array(rows);
+    for (var y = 0; y < rows; y++) {
+      var line = "";
+      for (var x = 0; x < cols; x++) {
+        var i = (y * cols + x) * 4, j = (y * cols + x) * 3;
+        var r = (d[i] / 255 - 0.5) * k + 0.5 + b;
+        var g = (d[i + 1] / 255 - 0.5) * k + 0.5 + b;
+        var bl = (d[i + 2] / 255 - 0.5) * k + 0.5 + b;
+        r = r < 0 ? 0 : r > 1 ? 1 : r;
+        g = g < 0 ? 0 : g > 1 ? 1 : g;
+        bl = bl < 0 ? 0 : bl > 1 ? 1 : bl;
+        rgb[j] = r * 255; rgb[j + 1] = g * 255; rgb[j + 2] = bl * 255;
+        var lum = 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+        var v = inv ? 1 - lum : lum;
+        var dens = white ? 1 - v : v;
+        line += ramp[Math.min(n - 1, Math.round(dens * (n - 1)))];
+      }
+      lines[y] = line;
+    }
+    return { cols: cols, rows: rows, lines: lines, rgb: rgb, mode: state.mode, bg: state.bg, white: white };
+  }
+
+  function drawAscii(cv, res, scale) {
+    var cw = CW * scale, ch = CH * scale;
+    cv.width = res.cols * cw; cv.height = res.rows * ch;
+    var c = cv.getContext("2d");
+    var white = res.white;
+    if (res.bg === "transparent") c.clearRect(0, 0, cv.width, cv.height);
+    else { c.fillStyle = white ? "#ffffff" : "#000000"; c.fillRect(0, 0, cv.width, cv.height); }
+    c.font = "500 " + (10 * scale) + "px " + FONT;
+    c.textAlign = "center"; c.textBaseline = "middle";
+    var color = res.mode === "color";
+    if (!color) c.fillStyle = white ? "#111111" : "#ffffff";
+    for (var y = 0; y < res.rows; y++) {
+      var chars = Array.from(res.lines[y]);
+      for (var x = 0; x < res.cols; x++) {
+        var t = chars[x];
+        if (t === " ") continue;
+        if (color) {
+          var j = (y * res.cols + x) * 3;
+          c.fillStyle = "rgb(" + res.rgb[j] + "," + res.rgb[j + 1] + "," + res.rgb[j + 2] + ")";
+        }
+        c.fillText(t, (x + 0.5) * cw, (y + 0.5) * ch);
+      }
+    }
+  }
+
+  function show(el, w, h) {
+    var res = convert(el, w, h);
+    lastRes = res;
+    $("view").classList.toggle("checker", res.bg === "transparent");
+    var ps = Math.max(1, Math.min(4, Math.ceil(760 / (res.cols * CW))));
+    drawAscii(out, res, ps);
+    var extra = "";
+    if (src && src.kind === "video" && isFinite(src.el.duration)) extra = " ・ 動画 " + src.el.duration.toFixed(1) + "秒";
+    if (src && src.kind === "gif") extra = " ・ GIF " + src.frames.length + "コマ " + (src.total / 1000).toFixed(1) + "秒";
+    $("info").textContent = res.cols + " × " + res.rows + " 文字" + extra;
+    setSaveEnabled();
+  }
+
+  function setSaveEnabled() {
+    var ok = !!lastRes && !exporting;
+    var can = ok && (!!dl || standalone);
+    $("save-png").disabled = !can; $("save-txt").disabled = !can; $("save-html").disabled = !can;
+    $("save-gif").disabled = !can || !src || (src.kind !== "video" && src.kind !== "gif");
+    $("copy").disabled = !ok;
+  }
+
+  /* ---------- GIF decoding ---------- */
+  function lzwDecode(min, data, n) {
+    var clear = 1 << min, eoi = clear + 1, size = min + 1, next = eoi + 1, mask = (1 << size) - 1;
+    var prefix = new Uint16Array(4096), suffix = new Uint8Array(4096), stack = new Uint8Array(4097);
+    var o = new Uint8Array(n), op = 0, bits = 0, acc = 0, ip = 0, old = -1, first = 0, i;
+    for (i = 0; i < clear; i++) suffix[i] = i;
+    while (op < n) {
+      while (bits < size) { if (ip >= data.length) return o; acc |= data[ip++] << bits; bits += 8; }
+      var code = acc & mask; acc >>= size; bits -= size;
+      if (code === clear) { size = min + 1; next = eoi + 1; mask = (1 << size) - 1; old = -1; continue; }
+      if (code === eoi) break;
+      if (old === -1) { o[op++] = suffix[code]; old = code; first = code; continue; }
+      var inCode = code, sp = 0;
+      if (code >= next) { stack[sp++] = first; code = old; }
+      while (code >= clear) { stack[sp++] = suffix[code]; code = prefix[code]; }
+      first = suffix[code]; stack[sp++] = first;
+      if (next < 4096) {
+        prefix[next] = old; suffix[next] = first; next++;
+        if ((next & mask) === 0 && next < 4096) { size++; mask = (1 << size) - 1; }
+      }
+      old = inCode;
+      while (sp > 0 && op < n) o[op++] = stack[--sp];
+    }
+    return o;
+  }
+
+  function decodeGif(buf, maxW) {
+    var d = new Uint8Array(buf), p = 0;
+    if (String.fromCharCode(d[0], d[1], d[2]) !== "GIF") throw new Error("not gif");
+    var W = d[6] | d[7] << 8, H = d[8] | d[9] << 8, flags = d[10];
+    p = 13;
+    var gct = null;
+    if (flags & 0x80) { var gn = 2 << (flags & 7); gct = d.subarray(p, p + gn * 3); p += gn * 3; }
+    var sc = Math.min(1, maxW / W), ow = Math.max(1, Math.round(W * sc)), oh = Math.max(1, Math.round(H * sc));
+    var full = document.createElement("canvas"); full.width = W; full.height = H;
+    var fx = full.getContext("2d", { willReadFrequently: true });
+    var patch = document.createElement("canvas"), px = patch.getContext("2d");
+    var frames = [], gce = null, total = 0;
+    while (p < d.length) {
+      var b = d[p++];
+      if (b === 0x3B) break;
+      if (b === 0x21) {
+        var label = d[p++];
+        if (label === 0xF9) {
+          var f = d[p + 1];
+          gce = { disp: (f >> 2) & 7, trans: (f & 1) ? d[p + 4] : -1, delay: (d[p + 2] | d[p + 3] << 8) * 10 };
+        }
+        while (d[p] !== 0 && p < d.length) p += d[p] + 1;
+        p++;
+      } else if (b === 0x2C) {
+        var x = d[p] | d[p + 1] << 8, y = d[p + 2] | d[p + 3] << 8, w = d[p + 4] | d[p + 5] << 8, h = d[p + 6] | d[p + 7] << 8, lf = d[p + 8];
+        p += 9;
+        var ct = gct;
+        if (lf & 0x80) { var ln = 2 << (lf & 7); ct = d.subarray(p, p + ln * 3); p += ln * 3; }
+        var min = d[p++], chunks = [], len = 0;
+        while (d[p] !== 0 && p < d.length) { var cn = d[p++]; chunks.push(d.subarray(p, p + cn)); p += cn; len += cn; }
+        p++;
+        var data = new Uint8Array(len), o = 0, ci;
+        for (ci = 0; ci < chunks.length; ci++) { data.set(chunks[ci], o); o += chunks[ci].length; }
+        var idx = lzwDecode(min, data, w * h);
+        if (lf & 0x40) {
+          var tmp = new Uint8Array(w * h), row = 0, passes = [[0, 8], [4, 8], [2, 4], [1, 2]];
+          for (var ps = 0; ps < 4; ps++) for (var yy = passes[ps][0]; yy < h; yy += passes[ps][1]) { tmp.set(idx.subarray(row * w, row * w + w), yy * w); row++; }
+          idx = tmp;
+        }
+        var img = px.createImageData(w, h), im = img.data, tr = gce ? gce.trans : -1;
+        for (var q = 0; q < w * h; q++) {
+          var c = idx[q];
+          if (c === tr || !ct) { im[q * 4 + 3] = 0; continue; }
+          im[q * 4] = ct[c * 3]; im[q * 4 + 1] = ct[c * 3 + 1]; im[q * 4 + 2] = ct[c * 3 + 2]; im[q * 4 + 3] = 255;
+        }
+        patch.width = w; patch.height = h; px.putImageData(img, 0, 0);
+        var disp = gce ? gce.disp : 0, backup = null;
+        if (disp === 3) backup = fx.getImageData(0, 0, W, H);
+        fx.drawImage(patch, x, y);
+        var fc = document.createElement("canvas"); fc.width = ow; fc.height = oh;
+        fc.getContext("2d").drawImage(full, 0, 0, ow, oh);
+        var delay = gce ? gce.delay : 100;
+        if (delay < 20) delay = 100;
+        frames.push({ canvas: fc, delay: delay });
+        total += delay;
+        if (disp === 2) fx.clearRect(x, y, w, h); else if (disp === 3 && backup) fx.putImageData(backup, 0, 0);
+        gce = null;
+        if (frames.length >= 600) break;
+      } else { break; }
+    }
+    return { w: ow, h: oh, frames: frames, total: total };
+  }
+
+  /* ---------- GIF encoding ---------- */
+  function lzwEncode(idx) {
+    var min = 8, clear = 256, eoi = 257, size = 9, next = 258;
+    var buf = new Uint8Array(Math.max(1024, idx.length >> 1)), n = 0, cur = 0, bits = 0;
+    var dict = new Map();
+    function emit(code) {
+      cur |= code << bits; bits += size;
+      while (bits >= 8) {
+        if (n === buf.length) { var t = new Uint8Array(buf.length * 2); t.set(buf); buf = t; }
+        buf[n++] = cur & 255; cur >>= 8; bits -= 8;
+      }
+    }
+    emit(clear);
+    var prefix = idx[0];
+    for (var i = 1; i < idx.length; i++) {
+      var k = idx[i], key = (prefix << 8) | k, v = dict.get(key);
+      if (v !== undefined) { prefix = v; continue; }
+      emit(prefix);
+      if (next < 4096) {
+        dict.set(key, next++);
+        if (next - 1 === (1 << size) && size < 12) size++;
+      } else {
+        emit(clear); dict.clear(); size = 9; next = 258;
+      }
+      prefix = k;
+    }
+    emit(prefix); emit(eoi);
+    if (bits > 0) { if (n === buf.length) { var t2 = new Uint8Array(buf.length + 1); t2.set(buf); buf = t2; } buf[n++] = cur & 255; }
+    return buf.subarray(0, n);
+  }
+  function gifHeader(w, h, pal) {
+    var a = [0x47, 0x49, 0x46, 0x38, 0x39, 0x61, w & 255, w >> 8, h & 255, h >> 8, 0xF7, 0, 0];
+    var head = new Uint8Array(a.length + 768 + 19);
+    head.set(a, 0); head.set(pal, a.length);
+    head.set([0x21, 0xFF, 0x0B, 0x4E, 0x45, 0x54, 0x53, 0x43, 0x41, 0x50, 0x45, 0x32, 0x2E, 0x30, 3, 1, 0, 0, 0], a.length + 768);
+    return head;
+  }
+  function gifFrame(w, h, idx, delayCs, tr) {
+    var lz = lzwEncode(idx), nb = Math.ceil(lz.length / 255);
+    var head = Uint8Array.of(0x21, 0xF9, 4, tr ? 0x09 : 0x04, delayCs & 255, delayCs >> 8, 0, 0,
+      0x2C, 0, 0, 0, 0, w & 255, w >> 8, h & 255, h >> 8, 0, 8);
+    var out2 = new Uint8Array(head.length + lz.length + nb + 1);
+    out2.set(head, 0);
+    var o = head.length;
+    for (var i = 0; i < lz.length; i += 255) {
+      var c = Math.min(255, lz.length - i);
+      out2[o++] = c; out2.set(lz.subarray(i, i + c), o); o += c;
+    }
+    out2[o++] = 0;
+    return out2;
+  }
+  function makePalette(mode, tr) {
+    var pal = new Uint8Array(768), i;
+    if (mode === "mono") { for (i = 0; i < 256; i++) { pal[i * 3] = pal[i * 3 + 1] = pal[i * 3 + 2] = i; } }
+    else {
+      for (i = 0; i < 256; i++) {
+        pal[i * 3] = Math.round(((i >> 5) & 7) * 255 / 7);
+        pal[i * 3 + 1] = Math.round(((i >> 2) & 7) * 255 / 7);
+        pal[i * 3 + 2] = Math.round((i & 3) * 255 / 3);
+      }
+    }
+    if (tr) { pal[3] = pal[4] = pal[5] = 0; }
+    return pal;
+  }
+  function toIndexed(data, mode, tr) {
+    var n = data.length >> 2, idx = new Uint8Array(n), i, v;
+    for (i = 0; i < n; i++) {
+      if (tr && data[i * 4 + 3] < 128) { idx[i] = 0; continue; }
+      v = mode === "mono" ? data[i * 4] : ((data[i * 4] >> 5) << 5) | ((data[i * 4 + 1] >> 5) << 2) | (data[i * 4 + 2] >> 6);
+      idx[i] = tr && v === 0 ? 1 : v;
+    }
+    return idx;
+  }
+
+  /* ---------- loading sources ---------- */
+  function makeSample() {
+    var c = document.createElement("canvas"); c.width = 640; c.height = 400;
+    var x = c.getContext("2d");
+    var g = x.createLinearGradient(0, 0, 0, 400);
+    g.addColorStop(0, "#101c4a"); g.addColorStop(0.65, "#7a2f7d"); g.addColorStop(1, "#f08a3c");
+    x.fillStyle = g; x.fillRect(0, 0, 640, 400);
+    var s = x.createRadialGradient(320, 200, 10, 320, 200, 150);
+    s.addColorStop(0, "#fff7cf"); s.addColorStop(0.5, "#ffc43d"); s.addColorStop(1, "#ff5a2a");
+    x.fillStyle = s; x.beginPath(); x.arc(320, 200, 150, 0, Math.PI * 2); x.fill();
+    x.fillStyle = "#7a2f7d";
+    for (var i = 0; i < 7; i++) x.fillRect(150, 215 + i * 22, 340, 3 + i * 2.2);
+    x.fillStyle = "#1f8f8b"; x.beginPath(); x.moveTo(0, 340); x.lineTo(130, 250); x.lineTo(250, 340); x.lineTo(0, 340); x.fill();
+    x.fillStyle = "#176d75"; x.beginPath(); x.moveTo(380, 340); x.lineTo(520, 240); x.lineTo(640, 340); x.lineTo(380, 340); x.fill();
+    x.fillStyle = "#0a1030"; x.fillRect(0, 335, 640, 65);
+    return c;
+  }
+  function stopMedia() {
+    if (src && src.kind === "video") { try { src.el.pause(); } catch (e) {} src.el.removeAttribute("src"); src.el.load(); src.el.remove(); }
+    if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = null; }
+  }
+  function setSource(s, name) {
+    src = s; dirty = true; gifPos = 0; gifShown = -1; gifPlaying = true;
+    var animated = s.kind === "video" || s.kind === "gif";
+    $("animopts").hidden = !animated; $("save-gif").hidden = !animated;
+    $("play").hidden = !animated; $("play").textContent = "一時停止";
+    $("srcname").textContent = "表示中: " + name;
+    say("");
+  }
+  function isGif(f) { return f.type === "image/gif" || /\.gif$/i.test(f.name); }
+  function loadFile(file) {
+    if (!file || exporting) return;
+    var t = file.type || "";
+    say("読み込み中…");
+    var done = function (e) { say(e || "このファイルは読み込めませんでした。画像・動画・GIFを選んでください。"); };
+    if (isGif(file)) {
+      file.arrayBuffer().then(function (buf) {
+        var g = decodeGif(buf, 640);
+        stopMedia();
+        if (g.frames.length > 1) setSource({ kind: "gif", frames: g.frames, total: g.total, w: g.w, h: g.h }, file.name);
+        else setSource({ kind: "image", el: g.frames[0].canvas, w: g.w, h: g.h }, file.name);
+      }).catch(function () { done(); });
+    } else if (t.indexOf("image/") === 0) {
+      var url = URL.createObjectURL(file), im = new Image();
+      im.onload = function () { stopMedia(); objectUrl = url; setSource({ kind: "image", el: im, w: im.naturalWidth, h: im.naturalHeight }, file.name); };
+      im.onerror = function () { URL.revokeObjectURL(url); done(); };
+      im.src = url;
+    } else if (t.indexOf("video/") === 0 || /\.(mp4|webm|mov|m4v|ogv)$/i.test(file.name)) {
+      var vurl = URL.createObjectURL(file), v = document.createElement("video");
+      v.muted = true; v.loop = true; v.playsInline = true; v.setAttribute("playsinline", ""); v.preload = "auto";
+      $("stash").appendChild(v);
+      v.onloadeddata = function () {
+        if (!v.videoWidth) { URL.revokeObjectURL(vurl); done(); return; }
+        stopMedia(); objectUrl = vurl;
+        setSource({ kind: "video", el: v, w: v.videoWidth, h: v.videoHeight }, file.name);
+        var pr = v.play(); if (pr && pr.catch) pr.catch(function () { $("play").textContent = "再生"; });
+      };
+      v.onerror = function () { URL.revokeObjectURL(vurl); v.remove(); done(); };
+      v.src = vurl;
+    } else { done(); }
+  }
+
+  /* ---------- preview loop ---------- */
+  function tick(now) {
+    requestAnimationFrame(tick);
+    var dt = now - (lastNow || now); lastNow = now;
+    if (!src || exporting) return;
+    if (src.kind === "image") {
+      if (dirty) { dirty = false; show(src.el, src.w, src.h); }
+    } else if (src.kind === "video") {
+      var v = src.el;
+      if (v.readyState >= 2 && (dirty || (!v.paused && now - lastVideoDraw > 45))) {
+        dirty = false; lastVideoDraw = now; show(v, src.w, src.h);
+      }
+    } else {
+      if (gifPlaying) gifPos = (gifPos + dt) % src.total;
+      var acc = 0, idx = 0;
+      for (var i = 0; i < src.frames.length; i++) { acc += src.frames[i].delay; if (gifPos < acc) { idx = i; break; } idx = i; }
+      if (dirty || idx !== gifShown) { gifShown = idx; dirty = false; show(src.frames[idx].canvas, src.w, src.h); }
+    }
+  }
+
+  /* ---------- saving ---------- */
+  function baseName() {
+    var n = $("srcname").textContent.replace(/^表示中: /, "").replace(/（.*$/, "").replace(/\.[^.]+$/, "");
+    n = n.replace(/[\\/:*?"<>|]/g, "_").trim() || "ascii";
+    return (n === "サンプル画像" ? "ascii" : n) + "-ascii";
+  }
+  function save(filename, data) {
+    if (standalone) {
+      var blob = data instanceof Blob ? data : new Blob([data], { type: /\.html$/.test(filename) ? "text/html" : "text/plain" });
+      var u = URL.createObjectURL(blob), a = document.createElement("a");
+      a.href = u; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(u); }, 10000);
+      say(filename + " を保存しました。");
+      return Promise.resolve();
+    }
+    if (!dl) { say("この環境ではファイルを保存できません。「コピー」をお使いください。"); return Promise.resolve(); }
+    return dl.save({ filename: filename, data: data }).then(function () {
+      say(filename + " を保存しました。");
+    }, function (e) {
+      say(e && e.code === "declined" ? "保存をキャンセルしました。" : "保存できませんでした。もう一度お試しください。");
+    });
+  }
+  function textOf(res) { return res.lines.join("\n") + "\n"; }
+  function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function htmlOf(res) {
+    var white = res.white, body = "", y, x, last = "", open = false;
+    for (y = 0; y < res.rows; y++) {
+      var chars = Array.from(res.lines[y]);
+      if (res.mode === "color") {
+        for (x = 0; x < res.cols; x++) {
+          var j = (y * res.cols + x) * 3, col = "rgb(" + res.rgb[j] + "," + res.rgb[j + 1] + "," + res.rgb[j + 2] + ")";
+          if (chars[x] === " ") { body += " "; continue; }
+          if (col !== last || !open) { if (open) body += "</span>"; body += '<span style="color:' + col + '">'; last = col; open = true; }
+          body += esc(chars[x]);
+        }
+        if (open) { body += "</span>"; open = false; last = ""; }
+      } else { body += esc(res.lines[y]); }
+      body += "\n";
+    }
+    var fg = white ? "#111" : "#fff";
+    return '<!DOCTYPE html>\n<html lang="ja"><head><meta charset="utf-8"><title>ASCII Art</title></head>\n<body style="margin:0;background:' + (res.bg === "transparent" ? (white ? "#d8dce6" : "#2a2f3a") : (white ? "#fff" : "#000")) + '">\n<pre style="margin:0;padding:16px;color:' + fg + ";font:10px/12px 'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;letter-spacing:0\">" + body + "</pre>\n</body></html>\n";
+  }
+
+  function setBusy(on) {
+    exporting = on;
+    $("prog").hidden = !on; $("cancel").hidden = !on;
+    if (!on) $("prog").value = 0;
+    setSaveEnabled();
+  }
+  function nap() { return new Promise(function (r) { setTimeout(r, 0); }); }
+  function seek(v, t) {
+    return new Promise(function (res) {
+      var fin = false, f = function () { if (fin) return; fin = true; v.removeEventListener("seeked", f); res(); };
+      v.addEventListener("seeked", f);
+      setTimeout(f, 1500);
+      v.currentTime = Math.max(0, Math.min(t, (v.duration || t) - 0.001));
+    });
+  }
+
+  async function exportGif() {
+    if (!src || exporting || (src.kind !== "video" && src.kind !== "gif")) return;
+    var fps = +$("fps").value, maxSec = +$("maxsec").value, scale = +$("scale").value;
+    var plan = [], i;
+    if (src.kind === "video") {
+      var dur = isFinite(src.el.duration) ? Math.min(src.el.duration, maxSec) : maxSec;
+      var cnt = Math.max(1, Math.floor(dur * fps));
+      for (i = 0; i < cnt; i++) plan.push({ t: i / fps, cs: Math.max(2, Math.round(100 / fps)) });
+    } else {
+      var stride = Math.max(1, Math.ceil(src.frames.length / 300)), acc = 0;
+      for (i = 0; i < src.frames.length && acc < maxSec * 1000; i += stride) {
+        var ms = 0;
+        for (var q = i; q < Math.min(i + stride, src.frames.length); q++) ms += src.frames[q].delay;
+        plan.push({ f: i, cs: Math.max(2, Math.round(ms / 10)) });
+        acc += ms;
+      }
+    }
+    var wasPlaying = src.kind === "video" ? !src.el.paused : gifPlaying, t0 = src.kind === "video" ? src.el.currentTime : 0;
+    if (src.kind === "video") src.el.pause();
+    cancelFlag = false; setBusy(true); say("GIFを作っています…");
+    var parts = [], cv = document.createElement("canvas"), mode = state.mode, tr = state.bg === "transparent", w = 0, h = 0;
+    try {
+      for (i = 0; i < plan.length; i++) {
+        if (cancelFlag) break;
+        var res;
+        if (src.kind === "video") { await seek(src.el, plan[i].t); res = convert(src.el, src.w, src.h); }
+        else { var fr = src.frames[plan[i].f]; res = convert(fr.canvas, src.w, src.h); }
+        drawAscii(cv, res, scale);
+        if (i === 0) { w = cv.width; h = cv.height; parts.push(gifHeader(w, h, makePalette(mode, tr))); }
+        var data = cv.getContext("2d").getImageData(0, 0, w, h).data;
+        parts.push(gifFrame(w, h, toIndexed(data, mode, tr), plan[i].cs, tr));
+        $("prog").value = (i + 1) / plan.length;
+        await nap();
+      }
+      if (cancelFlag) { say("中止しました。"); }
+      else {
+        parts.push(Uint8Array.of(0x3B));
+        var blob = new Blob(parts, { type: "image/gif" });
+        setBusy(false);
+        await save(baseName() + ".gif", blob);
+      }
+    } catch (e) {
+      say("GIFを作れませんでした。サイズを小さくして試してください。");
+    } finally {
+      if (src.kind === "video") { await seek(src.el, t0); if (wasPlaying) { var pr = src.el.play(); if (pr && pr.catch) pr.catch(function () {}); } }
+      setBusy(false); dirty = true;
+    }
+  }
+
+  /* ---------- wiring ---------- */
+  document.querySelector(".controls").addEventListener("input", function (e) {
+    if (e.target.id === "file" || e.target.id === "scale" || e.target.id === "fps" || e.target.id === "maxsec") return;
+    readState();
+  });
+  $("file").addEventListener("change", function (e) { loadFile(e.target.files[0]); e.target.value = ""; });
+  ["dragenter", "dragover"].forEach(function (n) {
+    window.addEventListener(n, function (e) { e.preventDefault(); $("drop").classList.add("over"); });
+  });
+  ["dragleave", "drop"].forEach(function (n) {
+    window.addEventListener(n, function (e) { e.preventDefault(); $("drop").classList.remove("over"); });
+  });
+  window.addEventListener("drop", function (e) { if (e.dataTransfer && e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+  $("play").addEventListener("click", function () {
+    if (!src) return;
+    if (src.kind === "video") {
+      if (src.el.paused) { var pr = src.el.play(); if (pr && pr.catch) pr.catch(function () {}); $("play").textContent = "一時停止"; }
+      else { src.el.pause(); $("play").textContent = "再生"; }
+    } else { gifPlaying = !gifPlaying; $("play").textContent = gifPlaying ? "一時停止" : "再生"; }
+  });
+  $("save-png").addEventListener("click", function () {
+    if (!lastRes) return;
+    var cv = document.createElement("canvas");
+    drawAscii(cv, lastRes, +$("scale").value);
+    cv.toBlob(function (b) { if (b) save(baseName() + ".png", b); else say("画像を作れませんでした。"); }, "image/png");
+  });
+  $("save-txt").addEventListener("click", function () { if (lastRes) save(baseName() + ".txt", textOf(lastRes)); });
+  $("save-html").addEventListener("click", function () { if (lastRes) save(baseName() + ".html", htmlOf(lastRes)); });
+  $("save-gif").addEventListener("click", exportGif);
+  $("cancel").addEventListener("click", function () { cancelFlag = true; });
+  $("copy").addEventListener("click", function () {
+    if (!lastRes) return;
+    var t = textOf(lastRes);
+    try {
+      navigator.clipboard.writeText(t).then(function () { say("テキストをコピーしました。"); }, function () { say("コピーできませんでした。テキスト保存をお試しください。"); });
+    } catch (e) { say("コピーできませんでした。テキスト保存をお試しください。"); }
+  });
+
+  /* ---------- start ---------- */
+  readState();
+  setSource({ kind: "image", el: makeSample(), w: 640, h: 400 }, "サンプル画像");
+  $("srcname").textContent = "表示中: サンプル画像（ここにドロップもできます）";
+  requestAnimationFrame(tick);
+  if (document.fonts && document.fonts.load) {
+    document.fonts.load('500 10px "IBM Plex Mono"').then(function () { dirty = true; }, function () {});
+  }
+  if (window.claude && window.claude.use) {
+    window.claude.use("downloads").then(function (x) {
+      dl = x; dlChecked = true; setSaveEnabled();
+      if (!x) say("この環境ではファイル保存が使えません。テキストは「コピー」で取り出せます。");
+    }, function () { dlChecked = true; });
+  } else { dlChecked = true; }
+})();
+</script>
+</body>
+</html>
